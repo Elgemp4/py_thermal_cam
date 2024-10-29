@@ -4,7 +4,11 @@ Les Wright 21 June 2023
 https://youtube.com/leslaboratory
 A Python program to read, parse and display thermal data from the Topdon TC001 Thermal camera!
 '''
+from http.client import responses
+
 from numpy.core.multiarray import unravel_index
+
+from src.gui import draw_dot
 
 print('Les Wright 21 June 2023')
 print('https://youtube.com/leslaboratory')
@@ -27,6 +31,7 @@ print('m : Cycle through ColorMaps')
 print('h : Toggle HUD')
 
 import cv2
+import gui
 import numpy as np
 import argparse
 import time
@@ -66,14 +71,14 @@ else:
 width = 256 #Sensor width
 height = 192 #sensor height
 scale = 3 #scale multiplier
-newWidth = width*scale 
-newHeight = height*scale
+scaled_width = width * scale
+scaled_height = height * scale
 alpha = 1.0 # Contrast control (1.0-3.0)
 colormap_index = 0
 font=cv2.FONT_HERSHEY_SIMPLEX
 dispFullscreen = False
 cv2.namedWindow('Thermal',cv2.WINDOW_GUI_NORMAL)
-cv2.resizeWindow('Thermal', newWidth,newHeight)
+cv2.resizeWindow('Thermal', scaled_width, scaled_height)
 rad = 0 #blur radius
 threshold = 2
 hud = True
@@ -96,7 +101,7 @@ colormaps = [('Jet', cv2.COLORMAP_JET),
 def rec():
 	now = time.strftime("%Y%m%d--%H%M%S")
 	#do NOT use mp4 here, it is flakey!
-	videoOut = cv2.VideoWriter(now+'output.avi', cv2.VideoWriter_fourcc(*'XVID'),25, (newWidth,newHeight))
+	videoOut = cv2.VideoWriter(now +'output.avi', cv2.VideoWriter_fourcc(*'XVID'), 25, (scaled_width, scaled_height))
 	return(videoOut)
 
 def snapshot(heatmap):
@@ -126,35 +131,33 @@ def applyColorMap(colormap_index):
 	return colormap_title, heatmap
 
 def writeText(text, x, y):
-	cv2.putText(heatmap, text, (x, y), font, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
+	cv2.putText(image, text, (x, y), font, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
+
+# Converting the raw values to celsius
+# https://www.eevblog.com/forum/thermal-imaging/infiray-and-their-p2-pro-discussion/200/
+# Huge props to LeoDJ for figuring out how the data is stored and how to compute temp from it.
+# Basically the temperatures are stored on 14 bits in kelvin multiplied by 16
+# As the data is stored on two different bytes they need to be recombined in a single 16 bits unsigned integer
+# So the formula is (raw_temp >> 2) / 16 to get the temperature in Kelvin
+# Then we substract 273.15 to convert Lelvin in Celcius
+# Simplified the equation become : raw_temp / 64 - 273.15
+# The data is then rounded for ease of use
+def convertRawToCelcius(raw_temp):
+	return np.round(((raw_th_data[..., 1].astype(np.uint16) << 8) + raw_th_data[..., 0].astype(np.uint16)) / 64 - 273.15, 2)
 
 while(cap.isOpened()):
 	# Capture frame-by-frame
 	ret, frame = cap.read()
 
 	if ret == True:
-		#im_data = image bytes
-		#raw_th_data = raw temperature bytes
 		im_data,raw_th_data = np.array_split(frame, 2)
+		th_data = convertRawToCelcius(raw_th_data)
 
-		# Converting the raw values to celsius
-		# https://www.eevblog.com/forum/thermal-imaging/infiray-and-their-p2-pro-discussion/200/
-		# Huge props to LeoDJ for figuring out how the data is stored and how to compute temp from it.
-		# Basically the temperatures are stored on 14 bits in kelvin multiplied by 16
-		# As the data is stored on two different bytes they need to be recombined in a single 16 bits unsigned integer
-		# So the formula is (raw_temp >> 2) / 16 to get the temperature in Kelvin
-		# Then we substract 273.15 to convert Lelvin in Celsius
-		# Simplified the equation become : raw_temp / 64 - 273.15
-		# The data is then rounded for ease of use
-		th_data = np.round(((raw_th_data[..., 1].astype(np.uint16) << 8) + raw_th_data[..., 0].astype(np.uint16)) / 64 - 273.15, 2)
-
-		#Center pixel
 		temp = th_data[96, 128]
 
 		mrow, mcol, maxtemp = findHighest()
 		lrow, lcol, mintemp = findLowest()
 
-		#find the average temperature in the frame
 		avg_temp = findAverage()
 
 		# Convert the real image to RGB
@@ -164,94 +167,32 @@ while(cap.isOpened()):
 		bgr = cv2.convertScaleAbs(bgr, alpha=alpha)#Contrast
 
 		#bicubic interpolate, upscale and blur
-		bgr = cv2.resize(bgr,(newWidth,newHeight),interpolation=cv2.INTER_CUBIC)#Scale up!
+		bgr = cv2.resize(bgr, (scaled_width, scaled_height), interpolation=cv2.INTER_CUBIC)#Scale up!
 		if rad>0:
 			bgr = cv2.blur(bgr,(rad,rad))
 
 
 		#apply colormap
-		cmapText, heatmap = applyColorMap(colormap_index)
+		cmapText, image = applyColorMap(colormap_index)
 
 		if(colormap_index == 10):
-			heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+			image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+		gui.draw_crosshair(image, temp, scaled_width, scaled_height)
 
-		# draw crosshairs
-		cv2.line(heatmap,(int(newWidth/2),int(newHeight/2)+20),\
-		(int(newWidth/2),int(newHeight/2)-20),(255,255,255),2) #vline
-		cv2.line(heatmap,(int(newWidth/2)+20,int(newHeight/2)),\
-		(int(newWidth/2)-20,int(newHeight/2)),(255,255,255),2) #hline
+		gui.draw_menu(hud, image, avg_temp, threshold, cmapText, rad, scale, alpha, snaptime, recording, elapsed)
 
-		cv2.line(heatmap,(int(newWidth/2),int(newHeight/2)+20),\
-		(int(newWidth/2),int(newHeight/2)-20),(0,0,0),1) #vline
-		cv2.line(heatmap,(int(newWidth/2)+20,int(newHeight/2)),\
-		(int(newWidth/2)-20,int(newHeight/2)),(0,0,0),1) #hline
-		#show temp
-		cv2.putText(heatmap,str(temp)+' C', (int(newWidth/2)+10, int(newHeight/2)-10),\
-		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 0, 0), 2, cv2.LINE_AA)
-		cv2.putText(heatmap,str(temp)+' C', (int(newWidth/2)+10, int(newHeight/2)-10),\
-		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
+		gui.draw_dot(image, mrow, mcol, scale, (0, 0, 255), maxtemp)
 
-		if hud:
-			# display black box for our data
-			cv2.rectangle(heatmap, (0, 0),(160, 120), (0,0,0), -1)
-			# put text in the box
-			cv2.putText(heatmap,'Avg Temp: ' + str(avg_temp) + ' C', (10, 14), \
-						cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Label Threshold: '+str(threshold)+' C', (10, 28),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Colormap: '+cmapText, (10, 42),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Blur: '+str(rad)+' ', (10, 56),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Scaling: '+str(scale)+' ', (10, 70),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			cv2.putText(heatmap,'Contrast: '+str(alpha)+' ', (10, 84),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-
-			cv2.putText(heatmap,'Snapshot: '+snaptime+' ', (10, 98),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
-
-			if recording == False:
-				cv2.putText(heatmap,'Recording: '+elapsed, (10, 112),\
-				cv2.FONT_HERSHEY_SIMPLEX, 0.4,(200, 200, 200), 1, cv2.LINE_AA)
-			if recording == True:
-				cv2.putText(heatmap,'Recording: '+elapsed, (10, 112),\
-				cv2.FONT_HERSHEY_SIMPLEX, 0.4,(40, 40, 255), 1, cv2.LINE_AA)
-		
-		#Yeah, this looks like we can probably do this next bit more efficiently!
-		#display floating max temp
-		#if maxtemp > avgtemp+threshold:
-		cv2.circle(heatmap, (mrow*scale, mcol*scale), 5, (0,0,0), 2)
-		cv2.circle(heatmap, (mrow*scale, mcol*scale), 5, (0,0,255), -1)
-		cv2.putText(heatmap,str(maxtemp)+' C', ((mrow*scale)+10, (mcol*scale)+5),\
-		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0,0,0), 2, cv2.LINE_AA)
-		cv2.putText(heatmap,str(maxtemp)+' C', ((mrow*scale)+10, (mcol*scale)+5),\
-		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
-
-		#display floating min temp
-		#if mintemp < avgtemp-threshold:
-		cv2.circle(heatmap, (lrow*scale, lcol*scale), 5, (0,0,0), 2)
-		cv2.circle(heatmap, (lrow*scale, lcol*scale), 5, (255,0,0), -1)
-		cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
-		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0,0,0), 2, cv2.LINE_AA)
-		cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
-		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
+		gui.draw_dot(image, lrow, lcol, scale, (255, 0, 0), mintemp)
 
 		#display image
-		cv2.imshow('Thermal',heatmap)
+		cv2.imshow('Thermal', image)
 
 		if recording == True:
 			elapsed = (time.time() - start)
-			elapsed = time.strftime("%H:%M:%S", time.gmtime(elapsed)) 
-			#print(elapsed)
-			videoOut.write(heatmap)
+			elapsed = time.strftime("%H:%M:%S", time.gmtime(elapsed))
+			videoOut.write(image)
 		
 		keyPress = cv2.waitKey(1)
 		if keyPress == ord('a'): #Increase blur radius
@@ -272,18 +213,18 @@ while(cap.isOpened()):
 			scale += 1
 			if scale >=5:
 				scale = 5
-			newWidth = width*scale
-			newHeight = height*scale
+			scaled_width = width * scale
+			scaled_height = height * scale
 			if dispFullscreen == False and isPi == False:
-				cv2.resizeWindow('Thermal', newWidth,newHeight)
+				cv2.resizeWindow('Thermal', scaled_width, scaled_height)
 		if keyPress == ord('c'): #Decrease scale
 			scale -= 1
 			if scale <= 1:
 				scale = 1
-			newWidth = width*scale
-			newHeight = height*scale
+			scaled_width = width * scale
+			scaled_height = height * scale
 			if dispFullscreen == False and isPi == False:
-				cv2.resizeWindow('Thermal', newWidth,newHeight)
+				cv2.resizeWindow('Thermal', scaled_width, scaled_height)
 
 		if keyPress == ord('q'): #enable fullscreen
 			dispFullscreen = True
@@ -293,7 +234,7 @@ while(cap.isOpened()):
 			dispFullscreen = False
 			cv2.namedWindow('Thermal',cv2.WINDOW_GUI_NORMAL)
 			cv2.setWindowProperty('Thermal',cv2.WND_PROP_AUTOSIZE,cv2.WINDOW_GUI_NORMAL)
-			cv2.resizeWindow('Thermal', newWidth,newHeight)
+			cv2.resizeWindow('Thermal', scaled_width, scaled_height)
 
 		if keyPress == ord('f'): #contrast+
 			alpha += 0.1
@@ -324,7 +265,7 @@ while(cap.isOpened()):
 			elapsed = "00:00:00"
 
 		if keyPress == ord('p'): #f to finish reording
-			snaptime = snapshot(heatmap)
+			snaptime = snapshot(image)
 
 		if keyPress == ord('q'):
 			break
