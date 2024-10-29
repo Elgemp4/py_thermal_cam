@@ -4,6 +4,8 @@ Les Wright 21 June 2023
 https://youtube.com/leslaboratory
 A Python program to read, parse and display thermal data from the Topdon TC001 Thermal camera!
 '''
+from numpy.core.multiarray import unravel_index
+
 print('Les Wright 21 June 2023')
 print('https://youtube.com/leslaboratory')
 print('A Python program to read, parse and display thermal data from the Topdon TC001 Thermal camera!')
@@ -58,7 +60,7 @@ cap = cv2.VideoCapture('/dev/video'+str(dev), cv2.CAP_V4L)
 if isPi == True:
 	cap.set(cv2.CAP_PROP_CONVERT_RGB, 0.0)
 else:
-	cap.set(cv2.CAP_PROP_CONVERT_RGB, False)
+	cap.set(cv2.CAP_PROP_CONVERT_RGB, 0.0)
 
 #256x192 General settings
 width = 256 #Sensor width
@@ -91,7 +93,24 @@ def snapshot(heatmap):
 	snaptime = time.strftime("%H:%M:%S")
 	cv2.imwrite("TC001"+now+".png", heatmap)
 	return snaptime
- 
+
+def getTemp(x, y):
+	hi = thdata[y][x][0]
+	lo = thdata[y][x][1]
+	lo = lo << 8
+	rawtemp = hi + lo
+	temp = (rawtemp / 64) - 273.15
+	return round(temp, 2)
+
+def findHighest():
+	linear_max = thdata[..., 1].argmax()
+	row, col = unravel_index(linear_max, (192, 256))
+	return (col, row, getTemp(col, row))
+
+def findLowest():
+	linear_max = thdata[..., 1].argmin()
+	row, col = unravel_index(linear_max, (192, 256))
+	return (col, row, getTemp(col, row))
 
 while(cap.isOpened()):
 	# Capture frame-by-frame
@@ -102,39 +121,11 @@ while(cap.isOpened()):
 		#https://www.eevblog.com/forum/thermal-imaging/infiray-and-their-p2-pro-discussion/200/
 		#Huge props to LeoDJ for figuring out how the data is stored and how to compute temp from it.
 		#grab data from the center pixel...
-		hi = thdata[96][128][0]
-		lo = thdata[96][128][1]
-		#print(hi,lo)
-		lo = lo*256
-		rawtemp = hi+lo
-		#print(rawtemp)
-		temp = (rawtemp/64)-273.15
-		temp = round(temp,2)
-		#print(temp)
+		temp = getTemp(128, 96)
 		#break
 
-		#find the max temperature in the frame
-		lomax = thdata[...,1].max()
-		posmax = thdata[...,1].argmax()
-		#since argmax returns a linear index, convert back to row and col
-		mcol,mrow = divmod(posmax,width)
-		himax = thdata[mcol][mrow][0]
-		lomax=lomax*256
-		maxtemp = himax+lomax
-		maxtemp = (maxtemp/64)-273.15
-		maxtemp = round(maxtemp,2)
-
-		
-		#find the lowest temperature in the frame
-		lomin = thdata[...,1].min()
-		posmin = thdata[...,1].argmin()
-		#since argmax returns a linear index, convert back to row and col
-		lcol,lrow = divmod(posmin,width)
-		himin = thdata[lcol][lrow][0]
-		lomin=lomin*256
-		mintemp = himin+lomin
-		mintemp = (mintemp/64)-273.15
-		mintemp = round(mintemp,2)
+		mrow, mcol, maxtemp = findHighest()
+		lrow, lcol, mintemp = findLowest()
 
 		#find the average temperature in the frame
 		loavg = thdata[...,1].mean()
