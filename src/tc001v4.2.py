@@ -117,17 +117,21 @@ def findLowest():
 	return (col, row, th_data[row, col])
 
 def findAverage():
-	avg_temp = th_data[...].mean()
-	return avg_temp
+	return round(th_data[...].mean(), 2)
+
 
 def applyColorMap(colormap_index):
 	colormap_title, colormap = colormaps[colormap_index]
 	heatmap = cv2.applyColorMap(bgr, colormap)
-	return heatmap
+	return colormap_title, heatmap
+
+def writeText(text, x, y):
+	cv2.putText(heatmap, text, (x, y), font, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
 
 while(cap.isOpened()):
 	# Capture frame-by-frame
 	ret, frame = cap.read()
+
 	if ret == True:
 		#im_data = image bytes
 		#raw_th_data = raw temperature bytes
@@ -166,7 +170,7 @@ while(cap.isOpened()):
 
 
 		#apply colormap
-		applyColorMap(colormap_index)
+		cmapText, heatmap = applyColorMap(colormap_index)
 
 		if(colormap_index == 10):
 			heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
@@ -188,7 +192,7 @@ while(cap.isOpened()):
 		cv2.putText(heatmap,str(temp)+' C', (int(newWidth/2)+10, int(newHeight/2)-10),\
 		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
 
-		if hud==True:
+		if hud:
 			# display black box for our data
 			cv2.rectangle(heatmap, (0, 0),(160, 120), (0,0,0), -1)
 			# put text in the box
@@ -304,10 +308,7 @@ while(cap.isOpened()):
 
 
 		if keyPress == ord('h'):
-			if hud==True:
-				hud=False
-			elif hud==False:
-				hud=True
+			hud = not hud
 
 		if keyPress == ord('m'): #m to cycle through color maps
 			colormap_index += 1
