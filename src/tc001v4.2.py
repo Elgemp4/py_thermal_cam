@@ -69,7 +69,7 @@ scale = 3 #scale multiplier
 newWidth = width*scale 
 newHeight = height*scale
 alpha = 1.0 # Contrast control (1.0-3.0)
-colormap = 0
+colormap_index = 0
 font=cv2.FONT_HERSHEY_SIMPLEX
 dispFullscreen = False
 cv2.namedWindow('Thermal',cv2.WINDOW_GUI_NORMAL)
@@ -81,7 +81,17 @@ recording = False
 elapsed = "00:00:00"
 snaptime = "None"
 
-
+colormaps = [('Jet', cv2.COLORMAP_JET),
+			 ('Hot', cv2.COLORMAP_HOT),
+			 ('Magma', cv2.COLORMAP_MAGMA),
+			 ('Inferno', cv2.COLORMAP_INFERNO),
+			 ('Plasma', cv2.COLORMAP_PLASMA),
+			 ('Bone', cv2.COLORMAP_BONE),
+			 ('Spring', cv2.COLORMAP_SPRING),
+			 ('Autumn', cv2.COLORMAP_AUTUMN),
+			 ('Viridis', cv2.COLORMAP_VIRIDIS),
+			 ('Parula', cv2.COLORMAP_PARULA),
+			 ('Inv Rainbow', cv2.COLORMAP_RAINBOW)]
 
 def rec():
 	now = time.strftime("%Y%m%d--%H%M%S")
@@ -105,6 +115,15 @@ def findLowest():
 	linear_max = th_data[...].argmin()
 	row, col = unravel_index(linear_max, (192, 256))
 	return (col, row, th_data[row, col])
+
+def findAverage():
+	avg_temp = th_data[...].mean()
+	return avg_temp
+
+def applyColorMap(colormap_index):
+	colormap_title, colormap = colormaps[colormap_index]
+	heatmap = cv2.applyColorMap(bgr, colormap)
+	return heatmap
 
 while(cap.isOpened()):
 	# Capture frame-by-frame
@@ -132,55 +151,26 @@ while(cap.isOpened()):
 		lrow, lcol, mintemp = findLowest()
 
 		#find the average temperature in the frame
-		avg_temp = round(th_data[...].mean(), 2)
-
+		avg_temp = findAverage()
 
 		# Convert the real image to RGB
 		bgr = cv2.cvtColor(im_data, cv2.COLOR_YUV2BGR_YUYV)
+
 		#Contrast
 		bgr = cv2.convertScaleAbs(bgr, alpha=alpha)#Contrast
+
 		#bicubic interpolate, upscale and blur
 		bgr = cv2.resize(bgr,(newWidth,newHeight),interpolation=cv2.INTER_CUBIC)#Scale up!
 		if rad>0:
 			bgr = cv2.blur(bgr,(rad,rad))
 
-		#apply colormap
-		if colormap == 0:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_JET)
-			cmapText = 'Jet'
-		if colormap == 1:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_HOT)
-			cmapText = 'Hot'
-		if colormap == 2:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_MAGMA)
-			cmapText = 'Magma'
-		if colormap == 3:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_INFERNO)
-			cmapText = 'Inferno'
-		if colormap == 4:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_PLASMA)
-			cmapText = 'Plasma'
-		if colormap == 5:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_BONE)
-			cmapText = 'Bone'
-		if colormap == 6:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_SPRING)
-			cmapText = 'Spring'
-		if colormap == 7:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_AUTUMN)
-			cmapText = 'Autumn'
-		if colormap == 8:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_VIRIDIS)
-			cmapText = 'Viridis'
-		if colormap == 9:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_PARULA)
-			cmapText = 'Parula'
-		if colormap == 10:
-			heatmap = cv2.applyColorMap(bgr, cv2.COLORMAP_RAINBOW)
-			heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-			cmapText = 'Inv Rainbow'
 
-		#print(heatmap.shape)
+		#apply colormap
+		applyColorMap(colormap_index)
+
+		if(colormap_index == 10):
+			heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
+
 
 		# draw crosshairs
 		cv2.line(heatmap,(int(newWidth/2),int(newHeight/2)+20),\
@@ -320,9 +310,9 @@ while(cap.isOpened()):
 				hud=True
 
 		if keyPress == ord('m'): #m to cycle through color maps
-			colormap += 1
-			if colormap == 11:
-				colormap = 0
+			colormap_index += 1
+			if colormap_index == 11:
+				colormap_index = 0
 
 		if keyPress == ord('r') and recording == False: #r to start reording
 			videoOut = rec()
