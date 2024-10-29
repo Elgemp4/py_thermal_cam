@@ -81,6 +81,8 @@ recording = False
 elapsed = "00:00:00"
 snaptime = "None"
 
+
+
 def rec():
 	now = time.strftime("%Y%m%d--%H%M%S")
 	#do NOT use mp4 here, it is flakey!
@@ -94,49 +96,47 @@ def snapshot(heatmap):
 	cv2.imwrite("TC001"+now+".png", heatmap)
 	return snaptime
 
-def getTemp(x, y):
-	rawtemp = thdata[y][x]
-	temp = (rawtemp / 64) - 273.15
-	return round(temp, 2)
-
 def findHighest():
-	linear_max = thdata[...].argmax()
+	linear_max = th_data[...].argmax()
 	row, col = unravel_index(linear_max, (192, 256))
-	return (col, row, getTemp(col, row))
+	return (col, row, th_data[row, col])
 
 def findLowest():
-	linear_max = thdata[...].argmin()
+	linear_max = th_data[...].argmin()
 	row, col = unravel_index(linear_max, (192, 256))
-	return (col, row, getTemp(col, row))
+	return (col, row, th_data[row, col])
 
 while(cap.isOpened()):
 	# Capture frame-by-frame
 	ret, frame = cap.read()
 	if ret == True:
-		imdata,thdata = np.array_split(frame, 2)
-		thdata = (thdata[..., 1].astype(np.uint16) << 8) + thdata[..., 0].astype(np.uint16)
-		#now parse the data from the bottom frame and convert to temp!
-		#https://www.eevblog.com/forum/thermal-imaging/infiray-and-their-p2-pro-discussion/200/
-		#Huge props to LeoDJ for figuring out how the data is stored and how to compute temp from it.
-		#grab data from the center pixel...
-		temp = getTemp(128, 96)
-		#break
+		#im_data = image bytes
+		#raw_th_data = raw temperature bytes
+		im_data,raw_th_data = np.array_split(frame, 2)
+
+		# Converting the raw values to celsius
+		# https://www.eevblog.com/forum/thermal-imaging/infiray-and-their-p2-pro-discussion/200/
+		# Huge props to LeoDJ for figuring out how the data is stored and how to compute temp from it.
+		# Basically the temperatures are stored on 14 bits in kelvin multiplied by 16
+		# As the data is stored on two different bytes they need to be recombined in a single 16 bits unsigned integer
+		# So the formula is (raw_temp >> 2) / 16 to get the temperature in Kelvin
+		# Then we substract 273.15 to convert Lelvin in Celsius
+		# Simplified the equation become : raw_temp / 64 - 273.15
+		# The data is then rounded for ease of use
+		th_data = np.round(((raw_th_data[..., 1].astype(np.uint16) << 8) + raw_th_data[..., 0].astype(np.uint16)) / 64 - 273.15, 2)
+
+		#Center pixel
+		temp = th_data[96, 128]
 
 		mrow, mcol, maxtemp = findHighest()
 		lrow, lcol, mintemp = findLowest()
 
 		#find the average temperature in the frame
-		loavg = thdata[...,1].mean()
-		hiavg = thdata[...,0].mean()
-		loavg=loavg*256
-		avgtemp = loavg+hiavg
-		avgtemp = (avgtemp/64)-273.15
-		avgtemp = round(avgtemp,2)
+		avg_temp = round(th_data[...].mean(), 2)
 
-		
 
 		# Convert the real image to RGB
-		bgr = cv2.cvtColor(imdata,  cv2.COLOR_YUV2BGR_YUYV)
+		bgr = cv2.cvtColor(im_data, cv2.COLOR_YUV2BGR_YUYV)
 		#Contrast
 		bgr = cv2.convertScaleAbs(bgr, alpha=alpha)#Contrast
 		#bicubic interpolate, upscale and blur
@@ -202,8 +202,8 @@ while(cap.isOpened()):
 			# display black box for our data
 			cv2.rectangle(heatmap, (0, 0),(160, 120), (0,0,0), -1)
 			# put text in the box
-			cv2.putText(heatmap,'Avg Temp: '+str(avgtemp)+' C', (10, 14),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
+			cv2.putText(heatmap,'Avg Temp: ' + str(avg_temp) + ' C', (10, 14), \
+						cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1, cv2.LINE_AA)
 
 			cv2.putText(heatmap,'Label Threshold: '+str(threshold)+' C', (10, 28),\
 			cv2.FONT_HERSHEY_SIMPLEX, 0.4,(0, 255, 255), 1, cv2.LINE_AA)
