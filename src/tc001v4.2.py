@@ -95,20 +95,17 @@ def snapshot(heatmap):
 	return snaptime
 
 def getTemp(x, y):
-	hi = thdata[y][x][0]
-	lo = thdata[y][x][1]
-	lo = lo << 8
-	rawtemp = hi + lo
+	rawtemp = thdata[y][x]
 	temp = (rawtemp / 64) - 273.15
 	return round(temp, 2)
 
 def findHighest():
-	linear_max = thdata[..., 1].argmax()
+	linear_max = thdata[...].argmax()
 	row, col = unravel_index(linear_max, (192, 256))
 	return (col, row, getTemp(col, row))
 
 def findLowest():
-	linear_max = thdata[..., 1].argmin()
+	linear_max = thdata[...].argmin()
 	row, col = unravel_index(linear_max, (192, 256))
 	return (col, row, getTemp(col, row))
 
@@ -117,6 +114,7 @@ while(cap.isOpened()):
 	ret, frame = cap.read()
 	if ret == True:
 		imdata,thdata = np.array_split(frame, 2)
+		thdata = (thdata[..., 1].astype(np.uint16) << 8) + thdata[..., 0].astype(np.uint16)
 		#now parse the data from the bottom frame and convert to temp!
 		#https://www.eevblog.com/forum/thermal-imaging/infiray-and-their-p2-pro-discussion/200/
 		#Huge props to LeoDJ for figuring out how the data is stored and how to compute temp from it.
@@ -235,22 +233,22 @@ while(cap.isOpened()):
 		
 		#Yeah, this looks like we can probably do this next bit more efficiently!
 		#display floating max temp
-		if maxtemp > avgtemp+threshold:
-			cv2.circle(heatmap, (mrow*scale, mcol*scale), 5, (0,0,0), 2)
-			cv2.circle(heatmap, (mrow*scale, mcol*scale), 5, (0,0,255), -1)
-			cv2.putText(heatmap,str(maxtemp)+' C', ((mrow*scale)+10, (mcol*scale)+5),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0,0,0), 2, cv2.LINE_AA)
-			cv2.putText(heatmap,str(maxtemp)+' C', ((mrow*scale)+10, (mcol*scale)+5),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
+		#if maxtemp > avgtemp+threshold:
+		cv2.circle(heatmap, (mrow*scale, mcol*scale), 5, (0,0,0), 2)
+		cv2.circle(heatmap, (mrow*scale, mcol*scale), 5, (0,0,255), -1)
+		cv2.putText(heatmap,str(maxtemp)+' C', ((mrow*scale)+10, (mcol*scale)+5),\
+		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0,0,0), 2, cv2.LINE_AA)
+		cv2.putText(heatmap,str(maxtemp)+' C', ((mrow*scale)+10, (mcol*scale)+5),\
+		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
 
 		#display floating min temp
-		if mintemp < avgtemp-threshold:
-			cv2.circle(heatmap, (lrow*scale, lcol*scale), 5, (0,0,0), 2)
-			cv2.circle(heatmap, (lrow*scale, lcol*scale), 5, (255,0,0), -1)
-			cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0,0,0), 2, cv2.LINE_AA)
-			cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
-			cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
+		#if mintemp < avgtemp-threshold:
+		cv2.circle(heatmap, (lrow*scale, lcol*scale), 5, (0,0,0), 2)
+		cv2.circle(heatmap, (lrow*scale, lcol*scale), 5, (255,0,0), -1)
+		cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
+		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0,0,0), 2, cv2.LINE_AA)
+		cv2.putText(heatmap,str(mintemp)+' C', ((lrow*scale)+10, (lcol*scale)+5),\
+		cv2.FONT_HERSHEY_SIMPLEX, 0.45,(0, 255, 255), 1, cv2.LINE_AA)
 
 		#display image
 		cv2.imshow('Thermal',heatmap)
