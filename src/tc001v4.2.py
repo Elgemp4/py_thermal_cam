@@ -88,26 +88,35 @@ def snapshot(heatmap):
 	cv2.imwrite("TC001"+now+".png", heatmap)
 	return snaptime
 
-def findHighest(data):
-	linear_max = data[...].argmax()
-	row, col = unravel_index(linear_max, data.shape)
-	return (col, row, data[row, col])
-
-def findLowest(data):
-	linear_max = data[...].argmin()
-	row, col = unravel_index(linear_max, data.shape)
-	return (col, row, data[row, col])
-
-def findAverage(data):
-	return round(data[...].mean(), 2)
-
-def applyColorMap(colormap_index):
+def apply_color_map(colormap_index):
 	colormap_title, colormap = colormaps[colormap_index]
 	heatmap = cv2.applyColorMap(bgr, colormap)
 	return colormap_title, heatmap
 
-def getBounds(bottom, top, left, right):
-	return th_data[bottom:top, left:right]
+
+class Zone:
+	def __init__(self, name, bottom, top, left, right):
+		self.name = name
+		self.bottom = bottom
+		self.top = top
+		self.left = left
+		self.right = right
+
+	def set_th_data(self, th_data):
+		self.th_data = th_data[self.bottom:self.top, self.left:self.right]
+
+	def find_highest(self):
+		linear_max = self.th_data[...].argmax()
+		row, col = unravel_index(linear_max, self.th_data.shape)
+		return (col, row, self.th_data[row, col])
+
+	def find_lowest(self):
+		linear_max = self.th_data[...].argmin()
+		row, col = unravel_index(linear_max, self.th_data.shape)
+		return (col, row, self.th_data[row, col])
+
+	def find_average(self):
+		return round(self.th_data[...].mean(), 2)
 
 
 # Converting the raw values to celsius
@@ -122,6 +131,9 @@ def getBounds(bottom, top, left, right):
 def convertRawToCelcius(raw_temp):
 	return np.round(((raw_th_data[..., 1].astype(np.uint16) << 8) + raw_th_data[..., 0].astype(np.uint16)) / 64 - 273.15, 2)
 
+#all = Zone("All", 0, 192, 0, 256)
+zones = [Zone("Zone 1", 0, 64, 0, 64), Zone("Zone 2", 0, 64, 64, 128), Zone("Zone 3", 0, 64, 128, 192), Zone("Zone 4", 64, 128, 0, 64), Zone("Zone 5", 128, 172, 128, 172)]
+
 while cap.isOpened():
 	# Capture frame-by-frame
 	ret, frame = cap.read()
@@ -131,11 +143,6 @@ while cap.isOpened():
 		th_data = convertRawToCelcius(raw_th_data)
 
 		temp = th_data[96, 128]
-
-		mrow, mcol, maxtemp = findHighest(th_data)
-		lrow, lcol, mintemp = findLowest(th_data)
-
-		avg_temp = findAverage(th_data)
 
 		# Convert the real image to RGB
 		bgr = cv2.cvtColor(im_data, cv2.COLOR_YUV2BGR_YUYV)
@@ -150,20 +157,10 @@ while cap.isOpened():
 
 
 		#apply colormap
-		cmapText, image = applyColorMap(colormap_index)
+		cmapText, image = apply_color_map(colormap_index)
 
-		#gui.draw_crosshair(image, temp, scaled_width, scaled_height)
-		#gui.draw_menu(hud, image, avg_temp, threshold, cmapText, rad, scale, alpha, snaptime, recording, elapsed)
-		gui.draw_dot(image, mrow, mcol, scale, (0, 0, 255), maxtemp)
-		gui.draw_dot(image, lrow, lcol, scale, (255, 0, 0), mintemp)
-
-		zone1 = getBounds(0, 64, 0, 64)
-
-		z_l_row, z_l_col, z_min_temp = findLowest(zone1)
-		z_m_row, z_m_col, z_max_temp = findHighest(zone1)
-
-		gui.draw_dot(image, z_l_row, z_l_col, scale, (0, 255, 0), z_min_temp)
-		gui.draw_dot(image, z_m_row, z_m_col, scale, (0, 255, 0), z_max_temp)
+		for zone in zones:
+			gui.draw_zone(image, zone, th_data, scale)
 
 		#display image
 		cv2.imshow('Thermal', image)
