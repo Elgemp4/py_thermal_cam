@@ -4,7 +4,9 @@ Les Wright 21 June 2023
 https://youtube.com/leslaboratory
 A Python program to read, parse and display thermal data from the Topdon TC001 Thermal camera!
 '''
+from datetime import datetime
 from http.client import responses
+from time import sleep
 
 from numpy.core.multiarray import unravel_index
 
@@ -14,6 +16,7 @@ import numpy as np
 import argparse
 import time
 import io
+import csv
 
 #We need to know if we are running on the Pi, because openCV behaves a little oddly on all the builds!
 #https://raspberrypi.stackexchange.com/questions/5100/detect-that-a-python-program-is-running-on-the-pi
@@ -134,6 +137,9 @@ def convertRawToCelcius(raw_temp):
 #all = Zone("All", 0, 192, 0, 256)
 zones = [Zone("Zone 1", 0, 64, 0, 64), Zone("Zone 2", 0, 64, 64, 128), Zone("Zone 3", 0, 64, 128, 192), Zone("Zone 4", 64, 128, 0, 64), Zone("Zone 5", 128, 172, 128, 172)]
 
+data_write = csv.writer(open('data.csv', 'a'))
+time_for_next_write = time.time()
+
 while cap.isOpened():
 	# Capture frame-by-frame
 	ret, frame = cap.read()
@@ -168,6 +174,8 @@ while cap.isOpened():
 		
 		keyPress = cv2.waitKey(1)
 
+
+
 		if keyPress == ord('q'): #enable fullscreen
 			dispFullscreen = True
 			cv2.namedWindow('Thermal',cv2.WND_PROP_FULLSCREEN)
@@ -185,3 +193,13 @@ while cap.isOpened():
 			break
 			capture.release()
 			cv2.destroyAllWindows()
+
+		if(time_for_next_write > time.time()):
+			continue
+
+		for zone in zones:
+			l_col, l_row, low = zone.find_lowest()
+			h_col, h_row, high = zone.find_highest()
+			data_write.writerow([zone.name, datetime.now().strftime("%m/%d/%Y.%H:%M:%S"), str(zone.find_average()), str(low), str(high)])
+
+		time_for_next_write = time.time() + 5
